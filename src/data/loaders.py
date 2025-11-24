@@ -1,1 +1,29 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"pygments_lexer":"ipython3","nbconvert_exporter":"python","version":"3.6.4","file_extension":".py","codemirror_mode":{"name":"ipython","version":3},"name":"python","mimetype":"text/x-python"},"kaggle":{"accelerator":"none","dataSources":[],"dockerImageVersionId":31192,"isInternetEnabled":true,"language":"python","sourceType":"script","isGpuEnabled":false}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"# %% [code]\nimport pandas as pd\nimport yfinance as yf\n\nfrom datetime import datetime, timedelta\n\ndef get_return_data(path: str) -> pd.DataFrame:\n    df_ticker_return = pd.read_csv(path)\n    df_ticker_return['Date'] = pd.to_datetime(df_ticker_return['Date'], utc=True)\n    return df_ticker_return\n\ndef get_single_ticker_history(ticker: str, start: datetime, end: datetime) -> pd.DataFrame:\n    ticker_yf = yf.Ticker(ticker)\n    df_return = ticker_yf.history(start = start, end = end+timedelta(days=1))\n    df_return['ticker'] = ticker \n    df_return.reset_index(inplace=True)\n    return df_return\n\ndef get_tickers_history(tickers: list[str], start: datetime, end: datetime) -> pd.DataFrame:\n    tickers_history_dfs = []\n    for ticker in tickers:    \n        df = get_single_ticker_history(ticker, start, end)\n        tickers_history_dfs.append(df)\n    if len(tickers_history_dfs) > 1:\n        return pd.concat(tickers_history_dfs)\n    return df\n\n    \n\n","metadata":{"_uuid":"59d6777c-2098-4d59-abbb-96314d7cfbe9","_cell_guid":"e20f34fe-d98e-4b21-a51c-bf7e657cc9d0","trusted":true,"collapsed":false,"jupyter":{"outputs_hidden":false}},"outputs":[],"execution_count":null}]}
+# %% [code]
+import pandas as pd
+import yfinance as yf
+
+from datetime import datetime, timedelta
+
+def get_return_data(path: str) -> pd.DataFrame:
+    df_ticker_return = pd.read_csv(path)
+    df_ticker_return['Date'] = pd.to_datetime(df_ticker_return['Date'], utc=True)
+    return df_ticker_return
+
+def get_single_ticker_history(ticker: str, start: datetime, end: datetime) -> pd.DataFrame:
+    ticker_yf = yf.Ticker(ticker)
+    df_return = ticker_yf.history(start = start, end = end+timedelta(days=1))
+    df_return['ticker'] = ticker 
+    df_return.reset_index(inplace=True)
+    return df_return
+
+def get_tickers_history(tickers: list[str], start: datetime, end: datetime) -> pd.DataFrame:
+    tickers_history_dfs = []
+    for ticker in tickers:    
+        df = get_single_ticker_history(ticker, start, end)
+        tickers_history_dfs.append(df)
+    if len(tickers_history_dfs) > 1:
+        return pd.concat(tickers_history_dfs)
+    return df
+
+    
+
