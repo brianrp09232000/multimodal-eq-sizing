@@ -25,5 +25,45 @@ def get_tickers_history(tickers: list[str], start: datetime, end: datetime) -> p
         return pd.concat(tickers_history_dfs)
     return df
 
+
+def get_vix_data(start: datetime, end: datetime) -> pd.DataFrame:
+    """
+    Gets VIX data and calculates the market regime z-score.
+    Also has a year buffer to populate the 252 day rolling window
+    Slight improvement to V1
+    """
+    # Add buffer for rolling window
+    buffer_start = start - timedelta(days=365)
     
+    # Fetch data using yfinance
+    vix_ticker = yf.Ticker("^VIX")
+    vix = vix_ticker.history(start=buffer_start, end=end + timedelta(days=1))
+    
+    if vix.empty:
+        raise ValueError("VIX data failure")
+
+    # Process Columns with clarity for columns
+    vix = vix[['Close']].rename(columns={'Close': 'VIX_Close'})
+    
+    rolling_window = 252
+    vix['VIX_mean_252'] = vix['VIX_Close'].rolling(window=rolling_window).mean()
+    vix['VIX_std_252'] = vix['VIX_Close'].rolling(window=rolling_window).std()
+    
+    # Compute z-score
+    vix['VIX_z'] = (vix['VIX_Close'] - vix['VIX_mean_252']) / vix['VIX_std_252']
+    
+    # Clip to [-3, 3] per the proposal
+    vix['VIX_z'] = vix['VIX_z'].clip(lower=-3, upper=3)
+    
+    # Standardized the time
+    start_utc = pd.Timestamp(start).tz_localize('UTC')
+    vix.index = pd.to_datetime(vix.index, utc=True)
+    
+    vix = vix[vix.index >= start_utc].copy()
+    
+    # Reset index to make date a column
+    vix.reset_index(inplace=True)
+    print("Yay!🥳")
+    
+    return vix[['Date', 'VIX_Close', 'VIX_z']]
 
