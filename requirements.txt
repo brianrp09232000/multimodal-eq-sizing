@@ -1,5 +1,3 @@
 yfinance==0.2.66
 pandas
 datetime
-sys
-pathlib
