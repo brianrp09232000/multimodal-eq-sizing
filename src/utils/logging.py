@@ -1,2 +1,2 @@
-def check_clone_works():
-  print("Code in repo is now available in /kaggle/working/multimodal-eq-sizing")
+def check_function_callable():
+  print("Source functions are now available in /kaggle/working/multimodal-eq-sizing")
