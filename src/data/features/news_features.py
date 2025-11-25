@@ -8,7 +8,6 @@ def counting_headlines_all_days(news_df):
     Output: pandas dataframe containing the number of headlines per ticker per day
                 indexes are dates as strings and tickers are the column names"""
     
-    
     #check if necessary columns exist, return empty df if they don't
     if ('date' not in list(news_df.columns)) or ('ticker' not in list(news_df.columns)):
         print('input dataframe does not have both ticker and date columns')
