@@ -155,3 +155,14 @@ def get_spread_z(df,
     out.drop('s_cs', axis=1)
 
     return out
+
+def get_sector_map(tickers):
+    sectors = {}
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).get_info()
+            sectors[t] = info.get("sector")
+        except Exception as e:
+            print(f"Failed for {t}: {e}")
+            sectors[t] = None
+    return pd.Series(sectors, name="sector")
