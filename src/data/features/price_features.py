@@ -10,8 +10,7 @@ def compute_momentum_rank(input_df):
     ----------
     Input dataset must contain columns ['ticker', 'Date']; 
     ----------
-    Output dataset adds additional columns:
-        ['mom_12_1','mom_rank']
+    Output dataset adds additional columns:['mom_12_1','mom_rank']
     """
 
     # Fetch data from yfinance starting at a buffer_start date to support 12–1 momentum calculations
