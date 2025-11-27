@@ -58,7 +58,7 @@ def get_vix_data(start: datetime, end: datetime) -> pd.DataFrame:
     vix['VIX_z'] = vix['VIX_z'].clip(lower=-3, upper=3)
     
     # Standardized the time
-    start_utc = pd.Timestamp(start).tz_localize('UTC')
+    #start_utc = pd.Timestamp(start).tz_localize('UTC')
     vix.index = pd.to_datetime(vix.index, utc=True)
     
     vix = vix[vix.index >= start_utc].copy()
