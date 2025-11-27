@@ -30,7 +30,7 @@ def get_vix_data(start: datetime, end: datetime) -> pd.DataFrame:
     """
     Gets VIX data and calculates the market regime z-score.
     Also has a year buffer to populate the 252 day rolling window
-    Slight improvement to V1
+    V2 improves the date time errors
     """
     # Add buffer for rolling window
     buffer_start = start - timedelta(days=365)
@@ -56,7 +56,10 @@ def get_vix_data(start: datetime, end: datetime) -> pd.DataFrame:
     vix['VIX_z'] = vix['VIX_z'].clip(lower=-3, upper=3)
     
     # Standardized the time
-    start_utc = pd.Timestamp(start).tz_localize('UTC')
+    # This works if start already has a timezone
+    # We should not be passing in unformatted dates, like datetime(2023, 1, 1)
+    # Otherwise it will crash again
+    start_utc = pd.Timestamp(start).tz_convert('UTC')
     vix.index = pd.to_datetime(vix.index, utc=True)
     
     vix = vix[vix.index >= start_utc].copy()
