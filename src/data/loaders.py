@@ -46,6 +46,7 @@ def get_vix_data(start: datetime, end: datetime) -> pd.DataFrame:
 
     # Process Columns with clarity for columns
     vix = vix[['Close']].rename(columns={'Close': 'VIX_Close'})
+    vix['Date'] = pd.to_datetime(vix['Date'], utc=True)
     
     rolling_window = 252
     vix['VIX_mean_252'] = vix['VIX_Close'].rolling(window=rolling_window).mean()
@@ -59,7 +60,7 @@ def get_vix_data(start: datetime, end: datetime) -> pd.DataFrame:
     
     # Standardized the time
     #start_utc = pd.Timestamp(start).tz_localize('UTC')
-    vix.index = pd.to_datetime(vix.index, utc=True)
+    #vix.index = pd.to_datetime(vix.index, utc=True)
     
     vix = vix[vix.index >= start_utc].copy()
     
