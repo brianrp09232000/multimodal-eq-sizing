@@ -1,9 +1,4 @@
 import pandas as pd
-import sys
-import pathlib
-
-repo_root = pathlib.Path("/kaggle/working/multimodal-eq-sizing")
-sys.path.append(str(repo_root))
 
 from src.data.features.news_features import count_headlines_per_ticker
 
