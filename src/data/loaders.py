@@ -166,3 +166,35 @@ def get_sector_map(tickers):
             print(f"Failed for {t}: {e}")
             sectors[t] = None
     return pd.Series(sectors, name="sector")
+
+def get_adv_dollar(
+    df: pd.DataFrame,
+    window: int = 20,
+    min_periods: int = 10,
+) -> pd.DataFrame:
+    """
+    Compute dollar-volume ADV per (ticker, date) and return ONLY join keys
+    and new columns so it can be merged back to the main df.
+
+    Output columns:
+        ["Date", "ticker", "dollar_volume", "adv_dollar"]
+    """
+    tmp = df[["Date", "ticker", "Close", "Volume"]].copy()
+
+    # sort by ticker & date to get a proper rolling window
+    tmp = tmp.sort_values(["ticker", "Date"])
+
+    # daily dollar volume
+    tmp["dollar_volume"] = tmp["Close"] * tmp["Volume"]
+
+    # rolling ADV in dollars, by ticker
+    tmp["adv_dollar"] = (
+        tmp
+        .groupby("ticker")["dollar_volume"]
+        .rolling(window=window, min_periods=min_periods)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+
+    # return only keys + new cols for joining
+    return tmp[["Date", "ticker", "dollar_volume", "adv_dollar"]]
