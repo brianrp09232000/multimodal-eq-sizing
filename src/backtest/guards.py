@@ -346,7 +346,7 @@ def apply_portfolio_guards(
     - sectors: sector label per ticker
     - z: alpha z-score per ticker
     - spread_z: trading-cost proxy per ticker
-    - prices: current prices (use Close or chosen reference)
+    - prices: current prices (Close)
     - adv_dollar: ADV in dollars per ticker
     - nav: portfolio NAV
     - vix_z: VIX z-score for regime gating
