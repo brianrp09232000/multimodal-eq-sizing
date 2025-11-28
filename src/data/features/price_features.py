@@ -17,7 +17,7 @@ def compute_momentum_rank(input_df):
     start = input_df['Date'].min() 
     end = input_df['Date'].max() 
     buffer_start = start - timedelta(days=400)
-    df = get_tickers_history(list(raw_data['ticker'].unique()), buffer_start, end)
+    df = get_tickers_history(list(input_df['ticker'].unique()), buffer_start, end)
     df = df.sort_values(['ticker', 'Date']).reset_index(drop=True)
 
     # Compute 12-1 momentum
