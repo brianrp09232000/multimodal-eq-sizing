@@ -7,7 +7,7 @@ def tickers_with_most_headlines(news_df, start=None, end=None, n=200):
     """Finds the tickers with the most headlines 
     Input: news_df pandas dataframe with ticker column for ticker symbols
             optional: n interger, number of top tickers to return
-    Output: list containing the number of headlines per ticker
+    Output: dataframe containing the number of headlines per ticker
                 for the tickers with the most headlines"""
     
     #count headlines for each ticker
@@ -18,5 +18,5 @@ def tickers_with_most_headlines(news_df, start=None, end=None, n=200):
     df = df[:n]
     df.reset_index(drop=True, inplace=True)
     
-    return list(df['ticker'])
+    return df
     
