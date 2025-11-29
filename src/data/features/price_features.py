@@ -49,8 +49,7 @@ def get_log_mktcap(input_df):
     Compute log(market capitalization) for each ticker.
     log(market cap_t) = log(Close_t) * SharesOutstanding. 
     * Note that Yahoo only provides the latest shares outstanding, so we don't have the historical 
-    shares outstanding at time t. The calculation method for market capitalization may not be precise.
-    * In addition, some tickers may not have SharesOutstanding information in yfinance.
+    shares outstanding at time t. The calculation method for market capitalization may not be accurate.
     ----------
     Input dataset must contain columns ['ticker', 'Date']; 
     ----------
@@ -68,7 +67,7 @@ def get_log_mktcap(input_df):
         shares = stock.info.get("sharesOutstanding", None)
 
         # Fetch historical price
-        df_price = stock.history(start=start, end=end)
+        df_price = get_single_ticker_history(ticker, start, end)
 
         # Add ticker column
         df_price["ticker"] = ticker
