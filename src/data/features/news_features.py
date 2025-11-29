@@ -87,25 +87,34 @@ def count_headlines_per_day(news_df):
     return df
 
 
-def count_headlines_per_ticker(news_df):
+def count_headlines_per_ticker(news_df, start=None, end=None):
     """Counts the number of headlines for each ticker symbol 
     Input: news_df pandas dataframe with ticker column for ticker symbols
     Output: pandas dataframe containing two columns: ticker names and the 
                 number of headlines for the ticker"""
     
-    #check if necessary columns exist, return empty dataframe if they don't
+    #check columns in dataframe
     columns = list(news_df.columns)
-    if not (('ticker' in columns) or ('Stock_symbol' in columns)):
-        print('input dataframe does not have both ticker column')
+    if (('date' not in columns) and ('Date' not in columns)) or (('ticker' not in columns) and ('Stock_symbol' not in columns)):
+        print('input dataframe does not have both ticker and date columns')
         return pd.DataFrame()
     
-    #find correct column name, column names vary by dataset
+    #find column names
+    date_col = 'date' if 'date' in columns else 'Date'
     ticker_col = 'ticker' if 'ticker' in columns else 'Stock_symbol'
+
+    #filter dates
+    if start is not None: 
+        start_filter = news_df[date_col] >= str(start)
+        news_df = news_df[start_filter]
+    if end is not None: 
+        end_filter = news_df[date_col] <= str(end)
+        news_df = news_df[end_filter]
     
     # Count occurrences in a specific column
     headline_counts = news_df[ticker_col].value_counts()
     df = headline_counts.to_frame(name='count')
     df['ticker'] = list(df.index)
-    df = df.reset_index()
+    df = df.reset_index(drop=True)
     
     return df[['ticker','count']]
