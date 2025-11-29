@@ -1,5 +1,7 @@
 import pandas as pd
+import numpy as np
 from datetime import timedelta
+import yfinance as yf
 from src.data.loaders import get_return_data, get_single_ticker_history, get_tickers_history
 
 def compute_momentum_rank(input_df):
