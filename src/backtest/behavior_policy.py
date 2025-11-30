@@ -178,7 +178,7 @@ def run_behavior_policy_with_guards(
         spread_z = day_df["spread_z"]
         prices = day_df["Close"]
         adv_dollar = day_df["adv_dollar"]
-        vix_z_value = float(day_df["vix_z"].iloc[0])
+        vix_z_value = float(day_df["VIX_z"].iloc[0])
 
         guarded_w, _shares = apply_portfolio_guards(
             action_weights=action_w,
