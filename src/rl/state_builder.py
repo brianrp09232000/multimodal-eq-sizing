@@ -23,6 +23,7 @@ def ensure_z_column(
     rng = np.random.default_rng(seed)
     out = df.copy()
     out[z_col] = rng.normal(loc=0.0, scale=1.0, size=len(out))
+    print("Using randomly generated dummy z column")
     return out
 
 
