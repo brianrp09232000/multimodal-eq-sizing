@@ -27,26 +27,6 @@ class BehaviorPolicyParams:
     tau2_quantile: float = 0.80
 
 
-# -------- 1) Dummy alpha helper --------
-
-def add_dummy_alpha_z(
-    df: pd.DataFrame,
-    col_name: str = "dummy_z",
-    seed: int = 42,
-) -> pd.DataFrame:
-    """
-    Add a dummy alpha z-score column to the dataframe.
-
-    Later, you can:
-      - overwrite this column with your real z, or
-      - skip this entirely if your final dataset already has a z column.
-    """
-    rng = np.random.default_rng(seed)
-    out = df.copy()
-    out[col_name] = rng.normal(loc=0.0, scale=1.0, size=len(out))
-    return out
-
-
 # -------- 2) Thresholded z -> bucket policy --------
 
 def _bucket_from_z(
