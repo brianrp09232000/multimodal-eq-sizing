@@ -4,4 +4,4 @@ numpy
 datetime
 dataclasses
 typing
-torch
+tensorflow
