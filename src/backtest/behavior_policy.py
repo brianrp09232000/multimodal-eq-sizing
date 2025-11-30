@@ -194,15 +194,24 @@ def run_behavior_policy_with_guards(
             trading_enabled=trading_enabled,
         )
 
-        all_action.append(action_w.rename("action_weight_raw"))
-        all_guarded.append(guarded_w.rename("weight_after_guards"))
+        action_raw_day_df = action_w.rename("action_weight_raw").to_frame()
+        action_raw_day_df["Date"] = date
+        action_raw_day_df['ticker']=tickers
+        all_action.append(action_raw_day_df)
+    
+        
+        action_guards_day_df = guarded_w.rename("weight_after_guards").to_frame()
+        action_guards_day_df["Date"] = date
+        action_guards_day_df['ticker']=tickers
+        all_guarded.append(action_guards_day_df)
 
         prev_w = guarded_w.copy()
 
     actions_concat = pd.concat(all_action)
     guarded_concat = pd.concat(all_guarded)
-
-    out = pd.concat([out, actions_concat], axis=1)
-    out = pd.concat([out, guarded_concat], axis=1)
-
+    out = (
+        out
+        .merge(actions_concat, on=["ticker", "Date"], how="inner")
+        .merge(guarded_concat, on=["ticker", "Date"], how="inner")
+    )
     return out
