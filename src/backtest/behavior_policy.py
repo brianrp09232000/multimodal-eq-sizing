@@ -147,12 +147,6 @@ def run_behavior_policy_with_guards(
       - 'action_weight_raw'   (before guards)
       - 'weight_after_guards' (after guard stack)
     """
-    if guard_params is None:
-        guard_params = PortfolioGuardParams()
-      
-    if policy_params is None:
-        policy_params = BehaviorPolicyParams()
-
     out = df.copy()
     out = out.sort_values(["Date", "ticker"])
 
@@ -169,10 +163,7 @@ def run_behavior_policy_with_guards(
         # 1) behavior policy actions
         action_w = compute_behavior_actions_for_day(
             day_df,
-            z_col=z_col,
-            wmax=policy_params.wmax,
-            eps=policy_params.eps,
-            rng=rng,
+            z_col=z_col
         )
 
         # 2) align prev weights
@@ -200,7 +191,6 @@ def run_behavior_policy_with_guards(
             vix_z=vix_z_value,
             allow_short=allow_short,
             trading_enabled=trading_enabled,
-            params=guard_params,
         )
 
         all_action.append(action_w.rename("action_weight_raw"))
