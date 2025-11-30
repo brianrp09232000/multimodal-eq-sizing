@@ -116,6 +116,8 @@ def compute_behavior_actions_for_day(
         lambda b: _maybe_epsilon_nudge(b, wmax=params.wmax, rng=rng, eps=params.eps)
     )
     actions.name = "action_weight_raw"
+    actions.index = df_day["ticker"].values
+
     return actions
 
 
