@@ -17,7 +17,7 @@ class BehaviorPolicyParams:
     These defaults follow the project proposal but with a simplified interface.
     """
     # max action possible
-    wmax: float = 0.02,   # 2% per-name cap
+    wmax: float = 0.02
 
     # epsilon-greedy nudge
     eps: float = 0.05
