@@ -105,7 +105,7 @@ def compute_SPY_r1 (input_df):
     df_spy = get_single_ticker_history("SPY", buffer_start, end)
     df_spy["spy_r1"] = df_spy["Close"] / df_spy["Close"].shift(1) - 1
     df_spy = df_spy[df_spy['Date']>=start]
-    df_spy = df_spy[['Date','ticker','spy_r1']]
+    df_spy = df_spy[['Date','spy_r1']]
     
     output_df = pd.merge(input_df, df_spy, on=['Date'], how='left')
     return output_df
