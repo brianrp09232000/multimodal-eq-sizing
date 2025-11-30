@@ -201,9 +201,7 @@ def run_behavior_policy_with_guards(
     actions_concat = pd.concat(all_action)
     guarded_concat = pd.concat(all_guarded)
 
-    out = out.set_index(["Date", "ticker"])
-    out["action_weight_raw"] = actions_concat
-    out["weight_after_guards"] = guarded_concat
-    out = out.reset_index()
+    out = pd.concat([out, actions_concat], axis=1)
+    out = pd.concat([out, guarded_concat], axis=1)
 
     return out
