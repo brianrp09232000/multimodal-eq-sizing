@@ -61,7 +61,7 @@ def build_rl_dataset(
     data = data.sort_values(["ticker", "Date"])
 
     # ------- 1) state definition -------
-    base_state_cols = [z_col, "vix_z", "spread_z", weight_col]
+    base_state_cols = [z_col, "VIX_z", "spread_z", weight_col]
     state_cols = list(dict.fromkeys(base_state_cols + list(extra_state_cols)))
 
     # ------- 2) previous weight per ticker -------
