@@ -19,6 +19,7 @@ def simulate_policy(
     policy_fn: Callable[[pd.DataFrame, pd.Series], pd.Series],
     guard_params: Optional[PortfolioGuardParams] = None,
     sim_config: Optional[SimulationConfig] = None,
+    z_col: str ="z_dummy"
 ) -> pd.DataFrame:
     """
     Run a backtest over df using the provided policy + guards.
@@ -72,7 +73,7 @@ def simulate_policy(
 
         # 2) Apply guards to get feasible weights
         sectors = day_df["sector"]
-        z_series = day_df.get("alpha_z", pd.Series(0.0, index=idx))
+        z_series = day_df[z_col]
         spread_z = day_df["spread_z"]
         prices = day_df["Close"]
         adv_dollar = day_df["adv_dollar"]
