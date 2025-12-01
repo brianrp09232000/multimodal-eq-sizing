@@ -9,19 +9,18 @@ import numpy as np
 import pandas as pd
 
 from src.backtest.guards import apply_portfolio_guards, PortfolioGuardParams
-from src.backtest.cost_models import turnover_cost  
-
-PolicyFn = Callable[[pd.DataFrame, pd.Series], pd.Series]
+from src.backtest.cost_models import turnover_and_cost  
 
 @dataclass
 class SimulationConfig:
     initial_nav: float = 1_000_000.0
     allow_short: bool = False
     trading_enabled: bool = True
+    cost_bps: int = 10
 
 def simulate_policy(
     df: pd.DataFrame,
-    policy_fn: PolicyFn,
+    policy_fn: Callable[[pd.DataFrame, pd.Series], pd.Series],
     guard_params: Optional[PortfolioGuardParams] = None,
     sim_config: Optional[SimulationConfig] = None,
 ) -> pd.DataFrame:
@@ -99,13 +98,10 @@ def simulate_policy(
         )
 
         # 3) Compute turnover and transaction costs
-        turnover = (guarded_w - prev_w_day).abs().sum()
-        # example: simple cost model
-        trading_cost = turnover_cost(turnover)  # e.g. c * turnover
+        turnover, trading_cost = turnover_and_cost(prev_w_day, guarded_w, cost_bps=sim_config.cost_bps)
 
         # 4) Compute portfolio return for this day
         r_vec = day_df["excess_return"].values
-
         w_vec = guarded_w.values
         port_ret = np.dot(w_vec, r_vec) - trading_cost
 
