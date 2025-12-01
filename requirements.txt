@@ -4,3 +4,5 @@ numpy
 datetime
 dataclasses
 typing
+torch
+transformers
