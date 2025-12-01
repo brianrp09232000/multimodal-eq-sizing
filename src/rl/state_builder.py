@@ -5,6 +5,7 @@ from typing import Iterable, Optional
 import numpy as np
 import pandas as pd
 
+from src.backtest.simulator import SimulationConfig
 
 def ensure_z_column(
     df: pd.DataFrame,
@@ -34,8 +35,8 @@ def build_rl_dataset(
     action_col: str = "action_weight_raw",
     weight_col: str = "weight_after_guards",
     extra_state_cols: Optional[Iterable[str]] = None,
-    cost_bps: float = 10.0,
     lambda_risk: float = 0.1,
+    sim_config: Optional[SimulationConfig] = None
 ) -> pd.DataFrame:
     """
     Build offline RL tuples from a panel DataFrame.
@@ -56,6 +57,9 @@ def build_rl_dataset(
     """
     if extra_state_cols is None:
         extra_state_cols = []
+
+    if sim_config is None:
+        sim_config = SimulationConfig()
 
     data = df.copy()
     data = data.sort_values(["ticker", "Date"])
@@ -78,7 +82,7 @@ def build_rl_dataset(
     )
 
     # ------- 4) reward_t = w_t * r_{t+1} - c|Δw| - λ w_t^2 -------
-    c = cost_bps / 10_000.0  # bps -> decimal
+    c = sim_config.cost_bps / 10_000.0  # bps -> decimal
     w_t = data[weight_col]
     w_prev = data["prev_weight"]
     dw = w_t - w_prev
