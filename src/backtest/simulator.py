@@ -17,9 +17,9 @@ class SimulationConfig:
 def simulate_policy(
     df: pd.DataFrame,
     policy_fn: Callable[[pd.DataFrame, pd.Series], pd.Series],
+    z_col: str,
     guard_params: Optional[PortfolioGuardParams] = None,
     sim_config: Optional[SimulationConfig] = None,
-    z_col: str ="z_dummy"
 ) -> pd.DataFrame:
     """
     Run a backtest over df using the provided policy + guards.
