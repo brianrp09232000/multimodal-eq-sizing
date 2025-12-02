@@ -68,8 +68,6 @@ def simulate_policy(
 
         # 1) Policy proposes raw action weights (buckets)
         action_weights = policy_fn(day_df, prev_w_day)
-        # ensure aligned index
-        action_weights = action_weights.reindex(idx)
 
         # 2) Apply guards to get feasible weights
         sectors = day_df["sector"]
