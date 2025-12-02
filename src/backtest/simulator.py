@@ -69,6 +69,7 @@ def simulate_policy(
         # 1) Policy proposes raw action weights (buckets)
         action_weights = policy_fn(day_df, prev_w_day)
 
+
         # 2) Apply guards to get feasible weights
         sectors = day_df["sector"]
         z_series = day_df[z_col]
@@ -76,6 +77,11 @@ def simulate_policy(
         prices = day_df["Close"]
         adv_dollar = day_df["adv_dollar"]
         vix_z_value = float(day_df["VIX_z"].iloc[0])
+
+        if date == date0:  # or first iteration
+            print("==== RL raw actions on", date, "====")
+            print(action_weights.describe())
+            print(action_weights.value_counts())
 
         guarded_w, _shares = apply_portfolio_guards(
             action_weights=action_weights,
@@ -91,6 +97,11 @@ def simulate_policy(
             trading_enabled=sim_config.trading_enabled,
             params=guard_params,
         )
+
+        if date == date0:
+            print("==== RL guarded weights on", date, "====")
+            print(guarded_w.describe())
+            print(guarded_w.value_counts())
 
         # 3) Compute turnover and transaction costs
         turnover, trading_cost = turnover_and_cost(prev_w_day, guarded_w, cost_bps=sim_config.cost_bps)
