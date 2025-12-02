@@ -258,7 +258,7 @@ def guard_g10_rounding(
     shares : pd.Series
         Rounded share counts (useful for orders).
     """
-    #prices = prices.reindex(w.index).replace(0, np.nan)
+    prices = prices.reindex(w.index).replace(0, np.nan)
     print("\nPrices on first date:")
     print(prices)
     
@@ -366,13 +366,12 @@ def apply_portfolio_guards(
         params = PortfolioGuardParams()
 
     # Align everything to the same index
-    idx = action_weights.index
-    prev_weights = prev_weights.reindex(idx).fillna(0.0)
-    sectors = sectors.reindex(idx)
-    z = z.reindex(idx).fillna(0.0)
-    spread_z = spread_z.reindex(idx).fillna(0.0)
-    prices = prices.reindex(idx)
-    adv_dollar = adv_dollar.reindex(idx)
+    prev_weights = prev_weights.fillna(0.0)
+    sectors = sectors
+    z = z.fillna(0.0)
+    spread_z = spread_z.fillna(0.0)
+    prices = prices
+    adv_dollar = adv_dollar
 
     # ---- G1: no-trade band
     w = guard_g1_no_trade_band(action_weights, prev_weights, params.no_trade_band)
