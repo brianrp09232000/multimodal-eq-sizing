@@ -188,8 +188,11 @@ def guard_g6_liquidity_participation(
     name to its previous weight (simple and conservative).
     """
     w = w.copy()
+    base_idx = prices.index
+    w.index = base_idx
+    
     prev_w = prev_w.fillna(0.0)
-    prev_w.index = w.index
+    prev_w.index = base_idx
 
     # Skip names that are too illiquid or too cheap
     skip_mask = (spread_z > max_spread_z) | (prices < min_price)
