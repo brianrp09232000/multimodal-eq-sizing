@@ -259,8 +259,17 @@ def guard_g10_rounding(
         Rounded share counts (useful for orders).
     """
     prices = prices.reindex(w.index).replace(0, np.nan)
+    print("\nPrices on first date:")
+    print(prices)
+    
+    print("\nWeights before rounding (w):")
+    print(w)
+    
     dollar_exposure = w * nav
     raw_shares = dollar_exposure / prices
+    print("\nDollar exposure:", dollar_exposure)
+    print("\nRaw shares:", raw_shares)
+
     rounded_shares = (raw_shares / lot_size).round() * lot_size
     rounded_w = (rounded_shares * prices) / nav
     rounded_w = rounded_w.fillna(0.0)
