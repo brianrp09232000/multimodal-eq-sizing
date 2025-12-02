@@ -59,7 +59,6 @@ def simulate_policy(
     nav = sim_config.initial_nav
     daily_records = []
 
-    i = 0
     for date, day_df in df.groupby("Date", sort=True):
         tickers = day_df["ticker"].values
         idx = pd.Index(tickers, name="ticker")
@@ -79,11 +78,6 @@ def simulate_policy(
         adv_dollar = day_df["adv_dollar"]
         vix_z_value = float(day_df["VIX_z"].iloc[0])
 
-        if i == 0:  # or first iteration
-            print("==== RL raw actions on", date, "====")
-            print(action_weights.describe())
-            print(action_weights.value_counts())
-
         guarded_w, _shares = apply_portfolio_guards(
             action_weights=action_weights,
             prev_weights=prev_w_day,
@@ -98,11 +92,6 @@ def simulate_policy(
             trading_enabled=sim_config.trading_enabled,
             params=guard_params,
         )
-
-        if i == 0:
-            print("==== RL guarded weights on", date, "====")
-            print(guarded_w.describe())
-            print(guarded_w.value_counts())
 
         # 3) Compute turnover and transaction costs
         turnover, trading_cost = turnover_and_cost(prev_w_day, guarded_w, cost_bps=sim_config.cost_bps)
