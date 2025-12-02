@@ -59,6 +59,7 @@ def simulate_policy(
     nav = sim_config.initial_nav
     daily_records = []
 
+    i = 0
     for date, day_df in df.groupby("Date", sort=True):
         tickers = day_df["ticker"].values
         idx = pd.Index(tickers, name="ticker")
@@ -78,7 +79,7 @@ def simulate_policy(
         adv_dollar = day_df["adv_dollar"]
         vix_z_value = float(day_df["VIX_z"].iloc[0])
 
-        if date == date0:  # or first iteration
+        if i == 0:  # or first iteration
             print("==== RL raw actions on", date, "====")
             print(action_weights.describe())
             print(action_weights.value_counts())
@@ -98,7 +99,7 @@ def simulate_policy(
             params=guard_params,
         )
 
-        if date == date0:
+        if i == 0:
             print("==== RL guarded weights on", date, "====")
             print(guarded_w.describe())
             print(guarded_w.value_counts())
@@ -129,6 +130,8 @@ def simulate_policy(
 
         # 7) Update prev_weights for next day
         prev_weights = guarded_w
+
+        i+=1
 
     res = pd.DataFrame(daily_records).sort_values("Date").reset_index(drop=True)
     return res
