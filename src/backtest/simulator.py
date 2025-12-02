@@ -120,7 +120,5 @@ def simulate_policy(
         # 7) Update prev_weights for next day
         prev_weights = guarded_w
 
-        i+=1
-
     res = pd.DataFrame(daily_records).sort_values("Date").reset_index(drop=True)
     return res
