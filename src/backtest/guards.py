@@ -258,7 +258,7 @@ def guard_g10_rounding(
     shares : pd.Series
         Rounded share counts (useful for orders).
     """
-    prices = prices.reindex(w.index).replace(0, np.nan)
+    #prices = prices.reindex(w.index).replace(0, np.nan)
     print("\nPrices on first date:")
     print(prices)
     
