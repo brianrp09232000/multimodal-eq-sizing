@@ -157,7 +157,7 @@ def iter_dataset_chunks(
 ) -> _t.Iterator[pd.DataFrame]:
     """
     Yield the dataset in chunks from multiple CSV shards and ensure types.
-    This avoids loading everything in memory at once (Option 4).
+    This avoids loading everything in memory at once
 
     Parameters
     ----------
@@ -414,6 +414,9 @@ def add_event_flags(df: pd.DataFrame) -> pd.DataFrame:
     """
     texts = df.apply(make_text_for_flags, axis=1)
 
+    earnings_regexp = r"|".join(EARNINGS_KEYWORDS)
+    re.search(earnings_regexp, texts.iloc[0])
+
     df["earnings_flag_row"] = texts.apply(lambda t: contains_any(t, EARNINGS_KEYWORDS))
     df["guidance_flag_row"] = texts.apply(lambda t: contains_any(t, GUIDANCE_KEYWORDS))
     df["merger_flag_row"] = texts.apply(lambda t: contains_any(t, MERGER_KEYWORDS))
@@ -635,14 +638,14 @@ def aggregate_per_stock_date(df: pd.DataFrame) -> pd.DataFrame:
 # Compute novelty
 # -----------------------------
 
-def compute_novelty_per_stock(group: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
+def compute_novelty_per_stock(grouped_df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
     """
     For a single stock, compute novelty as the fraction of entities that are new
     relative to the union of entities from the previous lookback_days.
 
     Parameters
     ----------
-    group
+    grouped_df
         DataFrame for a single stock.
     lookback_days
         Number of days to look back for novelty calculation.
@@ -652,18 +655,18 @@ def compute_novelty_per_stock(group: pd.DataFrame, lookback_days: int) -> pd.Dat
     pd.DataFrame
         DataFrame with added 'novelty' column.
     """
-    group = group.sort_values("Date").copy()
+    grouped_df = grouped_df.sort_values("Date").copy()
     novelty_values = []
 
-    for idx, row in group.iterrows():
+    for idx, row in grouped_df.iterrows():
         current_date = row["Date"]
         current_entities = set(row["entities_today"])
 
         # % news entities (entities_today) vs 3 days (lookback_days)
-        mask = (group["Date"] < current_date) & (
-            group["Date"] >= current_date - pd.Timedelta(days=lookback_days)
+        mask = (grouped_df["Date"] < current_date) & (
+            grouped_df["Date"] >= current_date - pd.Timedelta(days=lookback_days)
         )
-        past_rows = group.loc[mask]
+        past_rows = grouped_df.loc[mask]
 
         past_entities = set()
         for _, prow in past_rows.iterrows():
@@ -678,14 +681,14 @@ def compute_novelty_per_stock(group: pd.DataFrame, lookback_days: int) -> pd.Dat
 
         novelty_values.append(novelty)
 
-    group["novelty"] = novelty_values
-    return group
+    grouped_df["novelty"] = novelty_values
+    return grouped_df
 
 
 def add_novelty(agg_df: pd.DataFrame, lookback_days: int = 3, num_workers: int = 4) -> pd.DataFrame:
     """
     Apply novelty computation per stock and concatenate.
-    Uses multiprocessing to parallelize across stocks (Option 5).
+    Uses multiprocessing to parallelize across stocks
 
     Parameters
     ----------
@@ -796,7 +799,7 @@ def build_news_features(
     all_rows = []
     total_rows = 0
 
-    # 1–5. Process dataset in chunks (Option 4)
+    # 1–5. Process dataset in chunks
     print("Loading dataset in chunks...")
     df_iterator = iter_dataset_chunks(file_path=file_path)
 
