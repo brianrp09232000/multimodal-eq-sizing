@@ -27,7 +27,7 @@ def apply_aggregator(
     out_col: str = "r_tilde",
 ) -> pd.DataFrame:
     """
-    Equal-weight + disagreement shrink aggregator.
+    Weighted + disagreement shrink aggregator.
 
     - If news_flag == 1: use both legs.
     - If news_flag == 0: fall back to price only.
@@ -41,7 +41,7 @@ def apply_aggregator(
     news = df[news_col]
     flag = df[flag_col]
 
-    # Equal-weight average (or price-only if no news)
+    # Weighted average (or price-only if no news)
     r_bar = np.where(
         (flag == 1) & news.notna(),
         params.w * px + (1-params.w) * news,   # price + news
