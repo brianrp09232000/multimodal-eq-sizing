@@ -1,40 +1,33 @@
 import torch
 import torch.nn as nn
-from transformers import BertModel
+from transformers import AutoModel
 
 
 class FinbertHAN(nn.Module):
     """
     Leg 2: HAN + Recency Decay + Auxiliary Features
-    Architecture per the proposal but also HAN paper:
-    1. Frozen FinBERT -> sentence embeddings
+    Architecture adapted for speed using distilroberta
+    1. Frozen distilroberta -> sentence embeddings
     2. Bi-GRU -> document embeddings
     3. Time-aware attention -> weighted document vector
-    4. Concat(document vector, aux features) -> Regressor -> Return Prediction
-    
-    What this is doing overall:
-    - Implements the news/headlines tower
-    - Uses FinBERT for domain-specific embeddings
-    - Calculates recency weighted average via time decay attention
-    - Integrates auxiliary features like velocity, novelty, and flags
+    4. Concat(document vector, aux features) -> regressor -> return prediction
     """
 
     def __init__(self, 
                  gru_hidden_dim=100, 
                  dropout_rate=0.1, 
-                 bert_model_name='yiyanghkust/finbert-tone',
-                 aux_dim=4): # Novelty + Velocity + 2 Flags
+                 bert_model_name='mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis',
+                 aux_dim=4): # Novelty + velocity + 2 flags
         super().__init__()
 
-        # Layer 1: FinBERT is transfer learning 
+        # Layer 1: Transfer learning
         try:
-            self.bert = BertModel.from_pretrained(bert_model_name)
+            self.bert = AutoModel.from_pretrained(bert_model_name)
         except OSError:
             print(f"Could not load {bert_model_name}. Using fallback.")
-            self.bert = BertModel.from_pretrained('bert-base-uncased')
+            self.bert = AutoModel.from_pretrained('distilroberta-base')
 
-        # Optimization: Freeze BERT weights
-        # Reduces VRAM usage and prevents overfitting on small financial datasets
+        # Optimization: freeze transformer weights
         for param in self.bert.parameters():
             param.requires_grad = False
             
@@ -49,32 +42,29 @@ class FinbertHAN(nn.Module):
             batch_first=True
         )
 
-        # Layer 3: Time aware attention aka this will be the pooling
+        # Layer 3: Time aware attention (Pooling)
         # Attention mechanism to filter noise
         rnn_output_dim = gru_hidden_dim * 2
         self.attention_layer = nn.Linear(rnn_output_dim, rnn_output_dim)
         self.u_context = nn.Parameter(torch.randn(rnn_output_dim))
         
         # Recency-weighted average or light time-decay
-        # We learn a scalar 'tau' to decay attention scores based on time gaps.
         self.time_decay_tau = nn.Parameter(torch.tensor([0.1]))
 
         # Layer 4: Regressor prediction
-        # Output a scalar or RAW SCORE s_news
-        # We concatenate the 200-dim doc vector with 4-dim aux features before regression
         self.regressor = nn.Sequential(
             nn.Dropout(dropout_rate),
             nn.Linear(rnn_output_dim + aux_dim, 1)
         )
 
     def forward(self, input_ids, attention_mask, doc_lengths, time_gaps, aux_features, news_mask):
-        # 1. FinBERT Pass: Well get the sentence embeddings
-        # And then we use no_grad because BERT is frozen
+        # 1. distilroberta pass
         with torch.no_grad():
             bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         
-        # Pooler output this is the cls token that summarizes the sentence content
-        sent_embeds = bert_out.pooler_output
+        # Pooling strategy: distilroberta does not have a pooler_output
+        # We take the s token at index 0 which acts as the sentence embedding
+        sent_embeds = bert_out.last_hidden_state[:, 0, :]
         
         # 2. Reconstruct document structure
         # Turns flat list of sentences back into [Batch, Max_Sentences, Dim]
@@ -89,7 +79,7 @@ class FinbertHAN(nn.Module):
         scores = torch.matmul(u_it, self.u_context)
         
         # Apply time decay: subtract (tau * hours_old) from score
-        # Older news gets a lower attention score, implementing recency-weighting older news is less important compared to newer news
+        # Older news gets a lower attention score
         decay_term = torch.abs(self.time_decay_tau) * time_gaps
         scores = scores - decay_term
         
@@ -111,7 +101,6 @@ class FinbertHAN(nn.Module):
         prediction = self.regressor(combined_features)
         
         # If no headlines: set z_news = 0
-        # We multiply by news_mask (0 or 1) to zero-out predictions for empty days
         prediction = prediction * news_mask
         
         return prediction, alpha, news_mask
@@ -135,7 +124,6 @@ class FinbertHAN(nn.Module):
             if length > 0:
                 padded_docs[i, :length] = flat_embeds[start_idx:end_idx]
                 mask[i, :length] = 1 
-            # For length=0, mask remains 0, effectively ignoring the row
             start_idx = end_idx
             
         return padded_docs, mask

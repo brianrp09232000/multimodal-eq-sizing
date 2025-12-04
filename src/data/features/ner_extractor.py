@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 import pandas as pd
+import numpy as np
 from typing import List, Set
 
 class FinanceEntityExtractor:
@@ -72,23 +73,29 @@ def compute_novelty_feature(df: pd.DataFrame, ticker_col='ticker', date_col='Dat
     # Sort by ticker and date to ensure we process history sequentially
     df = df.sort_values([ticker_col, date_col])
     
-    novelty_scores = []
+    # Use a single pass loop over numpy arrays instead of groupby().apply()
+    # This reduces overhead
+    tickers = df[ticker_col].values
+    entities_series = df['entities'].values
+    novelty_scores = np.zeros(len(df), dtype=float)
     
-    # Group by ticker to handle history independently for each stock
-    for ticker, group in df.groupby(ticker_col):
-        # Sliding window buffer to store entities from the past 3 days
-        history_window = [] 
+    history_window = []
+    prev_ticker = None
+    
+    for i in range(len(df)):
+        current_ticker = tickers[i]
+        current_entities = entities_series[i]
         
-        for i, row in group.iterrows():
-            current_entities = row['entities']
+        # Reset history if we encounter a new ticker since data is sorted by ticker
+        if current_ticker != prev_ticker:
+            history_window = []
+            prev_ticker = current_ticker
             
-            # Handle empty news days
-            if not current_entities:
-                novelty_scores.append(0.0)
-                history_window.append(set()) # Push empty to history to maintain time window
-                if len(history_window) > 3: history_window.pop(0)
-                continue
-                
+        # Handle empty news days
+        if not current_entities:
+            novelty_scores[i] = 0.0
+            history_window.append(set())
+        else:
             # Flatten 3-day history into one set of known entities
             past_entities = set().union(*history_window)
             
@@ -96,15 +103,14 @@ def compute_novelty_feature(df: pd.DataFrame, ticker_col='ticker', date_col='Dat
             new_entities = current_entities - past_entities
             
             # Calculate ratio: new / total
-            score = len(new_entities) / len(current_entities)
-            novelty_scores.append(score)
-            
-            # Update rolling window: Add today, remove oldest day
+            novelty_scores[i] = len(new_entities) / len(current_entities)
             history_window.append(current_entities)
-            if len(history_window) > 3: history_window.pop(0)
+        
+        # Maintain sliding window of 3 days
+        if len(history_window) > 3:
+            history_window.pop(0)
 
     # Assign calculated scores back to the dataframe
-    # Logic works because we iterate in the same sort order as the dataframe
     df['novelty'] = novelty_scores
     
     return df

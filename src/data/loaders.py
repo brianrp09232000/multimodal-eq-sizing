@@ -5,16 +5,31 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import re
 
-# Allows file to be used for basic data fetching even without DL libs
-try:
-    import torch
-    from torch.utils.data import Dataset
-    from transformers import BertTokenizer
-    DL_AVAILABLE = True
-except ImportError:
-    DL_AVAILABLE = False
-    print("Torch/Transformers not found. Deep Learning loaders will not work, install Torch, silly goose")
+import torch
+from torch.utils.data import Dataset
+# Switched to AutoTokenizer to support distilroberta
+from transformers import AutoTokenizer
 
+# Constants for Event Flags
+EARNINGS_KEYWORDS = [
+    "earnings",
+    "eps",
+    "quarterly",
+    "q1",
+    "q2",
+    "q3",
+    "q4",
+    "full-year",
+    "revenue",
+]
+
+GUIDANCE_KEYWORDS = [
+    "guidance",
+    "forecast",
+    "outlook",
+    "raises",
+    "cuts",
+]
 
 def get_return_data(path: str) -> pd.DataFrame:
     df_ticker_return = pd.read_csv(path)
@@ -213,139 +228,155 @@ def get_adv_dollar(
 
 # Loaders for Leg 2
 
-if DL_AVAILABLE:
-    
-    # Singleton pattern to avoid reloading tokenizer over 30mb every batch
-    _GLOBAL_TOKENIZER = None
+_GLOBAL_TOKENIZER = None
 
-    def _get_tokenizer():
-        global _GLOBAL_TOKENIZER
-        if _GLOBAL_TOKENIZER is None:
+def _get_tokenizer():
+    global _GLOBAL_TOKENIZER
+    if _GLOBAL_TOKENIZER is None:
+        try:
+            # Updated to DistilRoBERTa for speed
+            _GLOBAL_TOKENIZER = AutoTokenizer.from_pretrained('mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis')
+        except OSError:
+            _GLOBAL_TOKENIZER = AutoTokenizer.from_pretrained('distilroberta-base')
+    return _GLOBAL_TOKENIZER
+
+class NewsDataset(Dataset):
+    """
+    Leg 2 Dataset
+    Handles missing news, computes flags, and prepares aux features
+    """
+    def __init__(self, dataframe):
+        self.data = dataframe
+        # Precompile regex for efficiency
+        self.earnings_regex = re.compile("|".join(EARNINGS_KEYWORDS))
+        self.guidance_regex = re.compile("|".join(GUIDANCE_KEYWORDS))
+
+    def __len__(self):
+        return len(self.data)
+        
+    def _compute_flags(self, sentences):
+        # Simple keyword matching to signal important corporate events
+        earnings_flag = 0.0
+        guidance_flag = 0.0
+        
+        combined_text = " ".join(sentences).lower()
+        
+        # Use precompiled regex searches
+        if self.earnings_regex.search(combined_text):
+            earnings_flag = 1.0
+        if self.guidance_regex.search(combined_text):
+            guidance_flag = 1.0
+            
+        return earnings_flag, guidance_flag
+
+    def __getitem__(self, idx):
+        """
+        Retrieves the item at the specified index.
+        
+        Args:
+            idx (int): The index of the item to retrieve.
+            
+        Returns:
+            A dictionary containing:
+                - sentences: List of sentence strings
+                - time_gaps: List of time gaps corresponding to sentences
+                - target: Target value
+                - aux: List of auxiliary features [novelty, velocity, earnings_flag, guidance_flag]
+                - news_mask: Mask indicating presence of news (1.0 for present, 0.0 for absent)
+        """
+        row = self.data.iloc[idx]
+        
+        sentences = row['sentences']
+        # Safety checks for sentences handling parsing errors
+        if not isinstance(sentences, list):
             try:
-                _GLOBAL_TOKENIZER = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone')
-            except OSError:
-                 _GLOBAL_TOKENIZER = BertTokenizer.from_pretrained('bert-base-uncased')
-        return _GLOBAL_TOKENIZER
+                sentences = ast.literal_eval(sentences)
+            except:
+                sentences = []
 
-    class NewsDataset(Dataset):
-        """
-        Leg 2 Dataset
-        Handles missing news, computes flags, and prepares aux features
-        """
-        def __init__(self, dataframe):
-            self.data = dataframe
-
-        def __len__(self):
-            return len(self.data)
-            
-        def _compute_flags(self, sentences):
-            # Simple keyword matching to signal important corporate events
-            earnings_flag = 0.0
-            guidance_flag = 0.0
-            
-            combined_text = " ".join(sentences).lower()
-            if re.search(r'earnings|profit|revenue|eps', combined_text):
-                earnings_flag = 1.0
-            if re.search(r'guidance|outlook|forecast', combined_text):
-                guidance_flag = 1.0
-                
-            return earnings_flag, guidance_flag
-
-        def __getitem__(self, idx):
-            row = self.data.iloc[idx]
-            
-            sentences = row['sentences']
-            # Safety checks for sentences handling parsing errors
-            if not isinstance(sentences, list):
-                try:
-                    import ast
-                    sentences = ast.literal_eval(sentences)
-                except:
-                    sentences = []
-
-            # 1. Handle Missing News via masking
-            # If no headlines... news mask = 0
-            news_mask = 1.0
-            if not sentences:
-                sentences = ["No news reported."] # Placeholder for BERT tokenization
-                news_mask = 0.0
-            
-            # 2. Velocity
-            # Velocity = count in 24h
-            velocity = float(len(sentences)) if news_mask == 1.0 else 0.0
-            
-            # 3. Event Flags
-            earn_flag, guide_flag = self._compute_flags(sentences)
-            
-            # 4. Time Gaps how recent
-            # Needed for recency weighted pooling in the model
-            time_gaps = row.get('gaps', [0.0] * len(sentences))
-            if not isinstance(time_gaps, list) or len(time_gaps) != len(sentences):
-                 time_gaps = [0.0] * len(sentences)
-
-            # 5. Novelty
-            # Novelty = % new entities
-            novelty = float(row.get('novelty', 0.0))
-
-            return {
-                'sentences': sentences,
-                'time_gaps': time_gaps,
-                'target': row.get('target', 0.0),
-                'aux': [novelty, velocity, earn_flag, guide_flag], # [4 dims]
-                'news_mask': news_mask
-            }
-
-    def han_collate_fn(batch):
-        """
-        Batches variable-length documents for the HAN model
-        Crucial for processing hierarchical data sentences -> doc
-        """
-        tokenizer = _get_tokenizer()
-
-        flat_sentences = []
-        doc_lengths = []
-        targets = []
-        aux_features = []
-        news_masks = []
+        # 1. Handle Missing News via masking
+        # If no headlines... news mask = 0
+        news_mask = 1.0
+        if not sentences:
+            sentences = ["No news reported."] # Placeholder for BERT tokenization
+            news_mask = 0.0
         
-        # Collect time gaps to pad them later
-        batch_time_gaps = []
-
-        for item in batch:
-            sentences = item['sentences']
-            gaps = item['time_gaps']
-            
-            # Memory safety: Cap sentences at 50 to avoid OOM on GPU
-            if len(sentences) > 50:
-                sentences = sentences[:50]
-                gaps = gaps[:50]
-                
-            doc_lengths.append(len(sentences))
-            flat_sentences.extend(sentences)
-            targets.append(item['target'])
-            aux_features.append(item['aux'])
-            news_masks.append(item['news_mask'])
-            batch_time_gaps.append(gaps)
-
-        # Tokenize flattened sentences in one go for efficiency purposes
-        tokenized = tokenizer(
-            flat_sentences,
-            padding=True, truncation=True, max_length=64, return_tensors="pt"
-        )
+        # 2. Velocity
+        # Velocity = count in 24h
+        velocity = float(len(sentences)) if news_mask == 1.0 else 0.0
         
-        # Pad time gaps to match max document length in this batch
-        max_len = max(doc_lengths)
-        padded_gaps = torch.zeros(len(batch), max_len)
-        for i, gaps in enumerate(batch_time_gaps):
-            length = len(gaps)
-            padded_gaps[i, :length] = torch.tensor(gaps, dtype=torch.float)
+        # 3. Event Flags
+        earn_flag, guide_flag = self._compute_flags(sentences)
+        
+        # 4. Time Gaps how recent
+        # Needed for recency weighted pooling in the model
+        time_gaps = row.get('gaps', [0.0] * len(sentences))
+        if not isinstance(time_gaps, list) or len(time_gaps) != len(sentences):
+                time_gaps = [0.0] * len(sentences)
+
+        # 5. Novelty
+        # Novelty = % new entities
+        novelty = float(row.get('novelty', 0.0))
 
         return {
-            'input_ids': tokenized['input_ids'],
-            'attention_mask': tokenized['attention_mask'],
-            'doc_lengths': doc_lengths,
-            'time_gaps': padded_gaps,
-            'targets': torch.tensor(targets, dtype=torch.float).unsqueeze(1),
-            'aux_features': torch.tensor(aux_features, dtype=torch.float),
-            'news_mask': torch.tensor(news_masks, dtype=torch.float).unsqueeze(1)
+            'sentences': sentences,
+            'time_gaps': time_gaps,
+            'target': row.get('target', 0.0),
+            'aux': [novelty, velocity, earn_flag, guide_flag], # [4 dims]
+            'news_mask': news_mask
         }
+
+def han_collate_fn(batch):
+    """
+    Batches variable-length documents for the HAN model
+    Crucial for processing hierarchical data sentences -> doc
+    """
+    tokenizer = _get_tokenizer()
+
+    flat_sentences = []
+    doc_lengths = []
+    targets = []
+    aux_features = []
+    news_masks = []
+    
+    # Collect time gaps to pad them later
+    batch_time_gaps = []
+
+    for item in batch:
+        sentences = item['sentences']
+        gaps = item['time_gaps']
+        
+        # Memory safety: Cap sentences at 50 to avoid OOM on GPU
+        if len(sentences) > 50:
+            sentences = sentences[:50]
+            gaps = gaps[:50]
+            
+        doc_lengths.append(len(sentences))
+        flat_sentences.extend(sentences)
+        targets.append(item['target'])
+        aux_features.append(item['aux'])
+        news_masks.append(item['news_mask'])
+        batch_time_gaps.append(gaps)
+
+    # Tokenize flattened sentences in one go for efficiency purposes
+    tokenized = tokenizer(
+        flat_sentences,
+        padding=True, truncation=True, max_length=64, return_tensors="pt"
+    )
+    
+    # Pad time gaps to match max document length in this batch
+    max_len = max(doc_lengths)
+    padded_gaps = torch.zeros(len(batch), max_len)
+    for i, gaps in enumerate(batch_time_gaps):
+        length = len(gaps)
+        padded_gaps[i, :length] = torch.tensor(gaps, dtype=torch.float)
+
+    return {
+        'input_ids': tokenized['input_ids'],
+        'attention_mask': tokenized['attention_mask'],
+        'doc_lengths': doc_lengths,
+        'time_gaps': padded_gaps,
+        'targets': torch.tensor(targets, dtype=torch.float).unsqueeze(1),
+        'aux_features': torch.tensor(aux_features, dtype=torch.float),
+        'news_mask': torch.tensor(news_masks, dtype=torch.float).unsqueeze(1)
+    }
