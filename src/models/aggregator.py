@@ -58,13 +58,9 @@ def apply_aggregator(
     # Shrink factor
     shrink = 1.0 / (1.0 + (d / params.theta) ** params.p)
 
-    # Final pre-calibrated blend
+    # Final pre-calibrated blend and disagreement
     df[out_col] = r_bar * shrink
-
-    # Keep for diagnostics
-    df["agg_r_bar"] = r_bar
-    df["agg_disagreement"] = d
-    df["agg_shrink"] = shrink
+    df["disagreement"] = d
   
     return df
  
