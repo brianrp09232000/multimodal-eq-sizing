@@ -9,7 +9,6 @@ import pandas as pd
 class PortfolioGuardParams:
     """
     Container for all portfolio guard hyperparameters.
-    These defaults follow the project proposal but with a simplified interface.
     """
     # G1: no-trade band
     no_trade_band: float = 0.0015  # 0.15% in weight space
