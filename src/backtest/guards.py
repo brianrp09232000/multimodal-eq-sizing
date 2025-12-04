@@ -9,7 +9,6 @@ import pandas as pd
 class PortfolioGuardParams:
     """
     Container for all portfolio guard hyperparameters.
-    These defaults follow the project proposal but with a simplified interface.
     """
     # G1: no-trade band
     no_trade_band: float = 0.0015  # 0.15% in weight space
@@ -188,10 +187,11 @@ def guard_g6_liquidity_participation(
     name to its previous weight (simple and conservative).
     """
     w = w.copy()
-    prev_w = prev_w.reindex(w.index).fillna(0.0)
-    prices = prices.reindex(w.index)
-    spread_z = spread_z.reindex(w.index)
-    adv_dollar = adv_dollar.reindex(w.index)
+    base_idx = prices.index
+    w.index = base_idx
+    
+    prev_w = prev_w.fillna(0.0)
+    prev_w.index = base_idx
 
     # Skip names that are too illiquid or too cheap
     skip_mask = (spread_z > max_spread_z) | (prices < min_price)
@@ -357,13 +357,12 @@ def apply_portfolio_guards(
         params = PortfolioGuardParams()
 
     # Align everything to the same index
-    idx = action_weights.index
-    prev_weights = prev_weights.reindex(idx).fillna(0.0)
-    sectors = sectors.reindex(idx)
-    z = z.reindex(idx).fillna(0.0)
-    spread_z = spread_z.reindex(idx).fillna(0.0)
-    prices = prices.reindex(idx)
-    adv_dollar = adv_dollar.reindex(idx)
+    prev_weights = prev_weights.fillna(0.0)
+    sectors = sectors
+    z = z.fillna(0.0)
+    spread_z = spread_z.fillna(0.0)
+    prices = prices
+    adv_dollar = adv_dollar
 
     # ---- G1: no-trade band
     w = guard_g1_no_trade_band(action_weights, prev_weights, params.no_trade_band)
