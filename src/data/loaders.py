@@ -4,6 +4,7 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 import re
+import ast
 
 import torch
 from torch.utils.data import Dataset
