@@ -20,49 +20,33 @@ class YearlyFoldMasks:
 def _prepare_yearly_folds(
     dates: pd.Series,
     min_train_years: int = 2,
-) -> List[YearlyFoldMasks]:
+) -> List[YearlyFold]:
     """
-    Internal helper: compute expanding yearly train/val masks.
-
-    Parameters
-    ----------
-    dates : pd.Series
-        Datetime-like series aligned with X / y or rl_df.
-    min_train_years : int
-        Minimum number of full years in the first training window.
-
-    Returns
-    -------
-    folds : List[YearlyFoldMasks]
-        One fold per validation year.
+    Internal helper to prepare yearly walk-forward folds.
     """
-    # Ensure datetime (UTC for safety)
-    if not np.issubdtype(dates.dtype, np.datetime64):
-        dates = pd.to_datetime(dates, utc=True)
+    # ✅ Always coerce to datetime with UTC
+    dates = pd.to_datetime(dates, utc=True)
 
     years = dates.dt.year
     unique_years = sorted(years.unique())
 
-    # Need at least min_train_years + 1 years total
     if len(unique_years) <= min_train_years:
         raise ValueError(
-            f"Not enough years of data. Need > {min_train_years} years, "
+            f"Not enough years of data. Need > {min_train_years}, "
             f"found {len(unique_years)}."
         )
 
-    folds: List[YearlyFoldMasks] = []
+    folds: List[YearlyFold] = []
 
-    # Loop starts at first VALIDATION year
-    # e.g. min_train_years=2 -> index 2 is first val year
     for i in range(min_train_years, len(unique_years)):
         val_year = unique_years[i]
         train_years_list = unique_years[:i]
 
         train_mask = years.isin(train_years_list)
-        val_mask = (years == val_year)
+        val_mask = years == val_year
 
         folds.append(
-            YearlyFoldMasks(
+            YearlyFold(
                 train_years=train_years_list,
                 val_year=val_year,
                 train_mask=train_mask,
