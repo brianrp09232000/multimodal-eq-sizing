@@ -5,10 +5,6 @@ from dataclasses import dataclass
 from typing import Tuple, List, Callable, Any, Dict
 
 
-# ---------------------------------
-# Shared fold definition / splitter
-# ---------------------------------
-
 @dataclass
 class YearlyFold:
     train_years: List[int]
@@ -24,7 +20,7 @@ def _prepare_yearly_folds(
     """
     Internal helper to prepare yearly walk-forward folds.
     """
-    # ✅ Always coerce to datetime with UTC
+    # Always coerce to datetime with UTC
     dates = pd.to_datetime(dates, utc=True)
 
     years = dates.dt.year
@@ -64,7 +60,7 @@ def _prepare_yearly_folds(
 def make_yearly_walkforward_splits(
     dates: pd.Series,
     min_train_years: int = 2,
-) -> List[YearlyFoldMasks]:
+) -> List[YearlyFold]:
     """
     Build yearly expanding-window train/val masks for RL or any custom use.
 
