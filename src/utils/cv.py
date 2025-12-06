@@ -10,7 +10,7 @@ from typing import Tuple, List, Callable, Any, Dict
 # ---------------------------------
 
 @dataclass
-class YearlyFoldMasks:
+class YearlyFold:
     train_years: List[int]
     val_year: int
     train_mask: pd.Series
