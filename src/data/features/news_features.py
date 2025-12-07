@@ -132,53 +132,136 @@ def count_headlines_per_ticker(news_df, start=None, end=None):
 
 
 # -----------------------------
-# Config
+# Configuration
 # -----------------------------
 
 # Name of the NER model - use DistilBERT NER (faster)
 # (you can swap for another HF NER model if you like)
 NER_MODEL_NAME = "elastic/distilbert-base-uncased-finetuned-conll03-english"
 
-
 # Name of the encoder for z_news (can be same or different)
-ENCODER_MODEL_NAME = "bert-base-uncased"
+# We now use FinBERT as a "precomputed, frozen" encoder for finance text.
+# ENCODER_MODEL_NAME = "ProsusAI/finbert"
+ENCODER_MODEL_NAME = "yiyanghkust/finbert-tone"
+
+# -----------------------------
+# Globals for recency-weighted pooling
+# -----------------------------
+
+# Tau (time decay coefficient) from the paper:
+# alpha_k ∝ exp(w^T h_k - tau * Δt_k)
+# You asked for tau = 1.0 (Option B).
+NEWS_ATTENTION_TAU: float = 1.0
+
+# w is the "attention direction" vector used in w^T h_k.
+# We initialize it once (random normal) the first time we see an embedding
+# and then keep it fixed (i.e., NOT learned here).
+_NEWS_ATTENTION_W: np.ndarray | None = None
 
 
 # -----------------------------
 # Helpers
 # -----------------------------
 
+def chunk_dataframe(df: pd.DataFrame, chunk_size: int) -> _t.Iterator[pd.DataFrame]:
+    """
+    Yield successive row chunks of a pandas DataFrame.
+
+    Parameters
+    ----------
+    df
+        Input DataFrame to be split into chunks.
+    chunk_size
+        Maximum number of rows in each yielded chunk.
+
+    Yields
+    ------
+    A view of the original DataFrame with up to `chunk_size` rows.
+    """
+    for start in range(0, len(df), chunk_size):
+        yield df.iloc[start:start + chunk_size]
+
+
+def _clean_news_df(chunk: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure standard dtypes for the news dataset chunk.
+
+    This normalizes the key columns used by the Leg B preprocessing:
+      - Date: datetime64[ns]
+      - Article_title: str
+      - Article: str (may be empty string if column missing)
+      - Stock_symbol: str
+
+    Parameters
+    ----------
+    chunk
+        Input DataFrame chunk.
+    
+    Returns
+    -------
+    DataFrame chunk with normalized dtypes.
+    """
+    chunk = chunk.copy()
+    chunk["Date"] = pd.to_datetime(chunk["Date"])
+    chunk["Article_title"] = chunk["Article_title"].astype(str)
+    chunk["Article"] = chunk.get("Article", "").astype(str)
+    chunk["Stock_symbol"] = chunk["Stock_symbol"].astype(str)
+    return chunk
+
+
 def iter_dataset_chunks(
-    file_path: str,
+    file_path: _t.Optional[str] = None,
     directory: _t.Optional[str] = None,
     pattern: _t.Optional[str] = None,
+    news_df: _t.Optional[pd.DataFrame] = None,
     max_rows: _t.Optional[int] = None,
     chunk_size: int = 20_000,
 ) -> _t.Iterator[pd.DataFrame]:
     """
-    Yield the dataset in chunks from multiple CSV shards and ensure types.
-    This avoids loading everything in memory at once
+    Yield chunks of a dataset either from:
+      - a provided in memory DataFrame (`news_df`), or
+      - one or more CSV files on disk.
+
+    If `news_df` is provided, CSV loading is skipped.
 
     Parameters
     ----------
-    file_path
-        Path to a single CSV file (if provided).
+    file_path 
+        Path to a single CSV file.
     directory
         Directory containing CSV shards.
     pattern
-        Glob pattern for CSV files.
-    max_rows
-        Maximum number of rows to yield (None for all).
+        Glob pattern for CSV shards inside `directory`.
+    news_df
+        If provided, iterate directly over this DataFrame in chunks.
+    max_rows 
+        Maximum number of rows to yield across all chunks (None for no limit).
     chunk_size
-        Number of rows per chunk.
+        Number of rows per yielded chunk.
 
     Yields
     ------
-    pd.DataFrame
-        Chunk of the dataset with ensured types.
+    A DataFrame chunk of size up to `chunk_size` with normalized dtypes.
     """
 
-    files = []
+    # Work with passed DataFrame in chunks if provided
+    if news_df is not None:
+        print("Using in memory DataFrame (news_df) for chunking...")
+        rows_yielded = 0
+
+        for raw_chunk in chunk_dataframe(news_df, chunk_size):
+            chunk = _clean_news_df(raw_chunk)
+            yield chunk
+            rows_yielded += len(chunk)
+
+            if max_rows is not None and rows_yielded >= max_rows:
+                print(f"Reached MAX_ROWS={max_rows}, stopping chunk loading.")
+                return
+
+        return
+
+    # Load from CSV files on disk and iterate in chunks
+    files: list[str] = []
     search_path = ""
 
     if file_path and os.path.isfile(file_path):
@@ -188,33 +271,30 @@ def iter_dataset_chunks(
         files = sorted(glob.glob(search_path))
 
     if not files:
-        raise FileNotFoundError(f"No CSV files found matching {search_path}")
+        raise FileNotFoundError(
+            "No CSV files found and no in memory DataFrame provided."
+        )
 
-    print(f"Found {len(files)} files:")
+    print(f"Found {len(files)} CSV files:")
     for f in files:
         print(f"  - {f}")
 
     rows_yielded = 0
 
     for f in files:
-        # chunked reading
-        for chunk in pd.read_csv(f, chunksize=chunk_size):
-            # enforce dtypes per chunk
-            chunk["Date"] = pd.to_datetime(chunk["Date"])
-            chunk["Article_title"] = chunk["Article_title"].astype(str)
-            chunk["Article"] = chunk.get("Article", "").astype(str)
-            chunk["Stock_symbol"] = chunk["Stock_symbol"].astype(str)
-
+        for raw_chunk in pd.read_csv(f, chunksize=chunk_size):
+            chunk = _clean_news_df(raw_chunk)
             yield chunk
-
             rows_yielded += len(chunk)
+
             if max_rows is not None and rows_yielded >= max_rows:
                 print(f"Reached MAX_ROWS={max_rows}, stopping chunk loading.")
                 return
 
 
+
 # -----------------------------
-# NER setup
+# Step 1: NER setup
 # -----------------------------
 
 def create_ner_pipeline(model_name: str = NER_MODEL_NAME, use_onxx: bool = False) -> pipeline:
@@ -312,7 +392,7 @@ def clean_entity_word(word: str) -> str:
 
 
 # -----------------------------
-# Event flags
+# Step 2: Event flags
 # -----------------------------
 
 EARNINGS_KEYWORDS = [
@@ -414,9 +494,6 @@ def add_event_flags(df: pd.DataFrame) -> pd.DataFrame:
     """
     texts = df.apply(make_text_for_flags, axis=1)
 
-    earnings_regexp = r"|".join(EARNINGS_KEYWORDS)
-    re.search(earnings_regexp, texts.iloc[0])
-
     df["earnings_flag_row"] = texts.apply(lambda t: contains_any(t, EARNINGS_KEYWORDS))
     df["guidance_flag_row"] = texts.apply(lambda t: contains_any(t, GUIDANCE_KEYWORDS))
     df["merger_flag_row"] = texts.apply(lambda t: contains_any(t, MERGER_KEYWORDS))
@@ -426,18 +503,20 @@ def add_event_flags(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -----------------------------
-# z_news encoder
+# Step 3: z_news encoder (FinBERT)
 # -----------------------------
 
 def create_encoder(model_name: str = ENCODER_MODEL_NAME, use_onnx: bool = False) -> tuple[AutoTokenizer, AutoModel]:
     """
     Create a transformer encoder (PyTorch or ONNX) to embed headlines.
 
+    We now use FinBERT ("ProsusAI/finbert") to produce finance-specific
+    text embeddings, which correspond to h_k in the paper.
+
     Parameters
     ----------
     model_name
         Name of the pretrained encoder model.
-    
     use_onnx
         Whether to use ONNX for GPU acceleration.
 
@@ -468,8 +547,8 @@ def encode_text(
     batch_size: int = 32
 ) -> list[np.ndarray]:
     """
-    Encode a list of text into vector embeddings using the encoder.
-    Uses the [CLS] token representation (index 0).
+    Encode a list of text into vector embeddings using the encoder (FinBERT).
+    Uses the [CLS] token representation (index 0), which we treat as h_k.
 
     Parameters
     ----------
@@ -485,7 +564,7 @@ def encode_text(
     Returns
     -------
     list of np.ndarray
-        List of headline embeddings.
+        List of headline embeddings (h_k vectors).
     """
     all_embeddings: list[np.ndarray] = []
 
@@ -522,7 +601,7 @@ def encode_text(
 
 
 # -----------------------------
-# Build per-row NER and embeddings
+# Step 4: Build per-row NER and embeddings
 # -----------------------------
 
 def process_rows_with_ner_and_embeddings(
@@ -535,7 +614,7 @@ def process_rows_with_ner_and_embeddings(
     """
     For each row:
         - get entities from a chosen column (e.g. Article_title or Article) using NER
-        - get embedding of title (for z_news later)
+        - get embedding of that text using FinBERT (for z_news later)
 
     Parameters
     ----------
@@ -547,29 +626,27 @@ def process_rows_with_ner_and_embeddings(
         Tokenizer for encoder model.
     encoder_model
         Encoder model for generating embeddings.
-    ner_text_column
-        Column to use for NER extraction.
+    text_column
+        Column to use for NER and for text embeddings.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with added entities and embeddings columns.
+        DataFrame with added 'entities' and 'title_embedding' columns.
     """
-    
-    # Text for NER comes from the configurable column
     if text_column not in df.columns:
         raise ValueError(f"NER text column '{text_column}' not found in DataFrame columns.")
-    
-    # Embeddings
+
+    # Text for both embeddings and NER
     texts = df[text_column].fillna("").astype(str).tolist()
 
-    # 1) Embeddings for all titles (z_news based on headline text)
-    print(f"Encoding headline embeddings for z_news prototype on {len(texts)} rows...")
+    # 1) Embeddings for all text rows (h_k vectors)
+    print(f"Encoding headline embeddings (FinBERT) on {len(texts)} rows...")
     embeddings = encode_text(
-        tokenizer=tokenizer, 
-        encoder_model=encoder_model, 
-        text_list=texts, 
-        batch_size=32
+        tokenizer=tokenizer,
+        encoder_model=encoder_model,
+        text_list=texts,
+        batch_size=32,
     )
     df["title_embedding"] = embeddings
 
@@ -594,22 +671,26 @@ def process_rows_with_ner_and_embeddings(
 
 
 # -----------------------------
-# Aggregate to stock-date level
+# Step 5: Aggregate to stock-date level
 # -----------------------------
 
 def aggregate_per_stock_date(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate row-level info into per (Stock_symbol, Date) level.
 
+    For each stock-date bucket we compute:
+        - velocity: number of headlines in the last 24h (here, that date)
+        - entities_today: union of entities mentioned
+        - embeddings_today: list of FinBERT embeddings h_k
+        - max of event flags across headlines
+
     Parameters
     ----------
     df
-        DataFrame with row-level features.
-
+        DataFrame containing news rows.
     Returns
     -------
-    pd.DataFrame
-        Aggregated DataFrame at stock-date level.
+        Aggregated DataFrame.
     """
     def combine_entities(series):
         combined = set()
@@ -635,17 +716,17 @@ def aggregate_per_stock_date(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -----------------------------
-# Compute novelty
+# Step 6: Compute novelty
 # -----------------------------
 
-def compute_novelty_per_stock(grouped_df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
+def compute_novelty_per_stock(group: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
     """
     For a single stock, compute novelty as the fraction of entities that are new
     relative to the union of entities from the previous lookback_days.
 
     Parameters
     ----------
-    grouped_df
+    group
         DataFrame for a single stock.
     lookback_days
         Number of days to look back for novelty calculation.
@@ -655,18 +736,18 @@ def compute_novelty_per_stock(grouped_df: pd.DataFrame, lookback_days: int) -> p
     pd.DataFrame
         DataFrame with added 'novelty' column.
     """
-    grouped_df = grouped_df.sort_values("Date").copy()
+    group = group.sort_values("Date").copy()
     novelty_values = []
 
-    for idx, row in grouped_df.iterrows():
+    for idx, row in group.iterrows():
         current_date = row["Date"]
         current_entities = set(row["entities_today"])
 
-        # % news entities (entities_today) vs 3 days (lookback_days)
-        mask = (grouped_df["Date"] < current_date) & (
-            grouped_df["Date"] >= current_date - pd.Timedelta(days=lookback_days)
+        # % of news entities (entities_today) vs previous lookback_days
+        mask = (group["Date"] < current_date) & (
+            group["Date"] >= current_date - pd.Timedelta(days=lookback_days)
         )
-        past_rows = grouped_df.loc[mask]
+        past_rows = group.loc[mask]
 
         past_entities = set()
         for _, prow in past_rows.iterrows():
@@ -681,14 +762,14 @@ def compute_novelty_per_stock(grouped_df: pd.DataFrame, lookback_days: int) -> p
 
         novelty_values.append(novelty)
 
-    grouped_df["novelty"] = novelty_values
-    return grouped_df
+    group["novelty"] = novelty_values
+    return group
 
 
 def add_novelty(agg_df: pd.DataFrame, lookback_days: int = 3, num_workers: int = 4) -> pd.DataFrame:
     """
     Apply novelty computation per stock and concatenate.
-    Uses multiprocessing to parallelize across stocks
+    Uses multiprocessing to parallelize across stocks.
 
     Parameters
     ----------
@@ -720,13 +801,19 @@ def add_novelty(agg_df: pd.DataFrame, lookback_days: int = 3, num_workers: int =
 
 
 # -----------------------------
-# Step 7: Aggregate embeddings into z_news
+# Step 7: Aggregate embeddings into z_news (recency-weighted pooling)
 # -----------------------------
 
 def aggregate_z_news(agg_df: pd.DataFrame) -> pd.DataFrame:
     """
-    For each (Stock_symbol, Date), aggregate embeddings_today into a single z_news vector.
-    Simple prototype: average of all headline embeddings for that stock-day.
+    For each (Stock_symbol, Date), aggregate embeddings_today into a single
+    z_news vector using the formula from the paper:
+
+        alpha_k ∝ exp( w^T h_k - tau * Δt_k )
+        z_news = Σ_k alpha_k * h_k
+
+    which is a content-based softmax weighting over the headlines in the
+    24-hour window instead of a plain average.
 
     Parameters
     ----------
@@ -735,18 +822,47 @@ def aggregate_z_news(agg_df: pd.DataFrame) -> pd.DataFrame:
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame with added 'z_news' column.
+    DataFrame with added 'z_news' column.
     """
+    global _NEWS_ATTENTION_W
+
     z_vectors = []
 
     for _, row in agg_df.iterrows():
-        emb_list = row["embeddings_today"]  # list of np arrays
+        emb_list = row["embeddings_today"]
         if not emb_list:
             z_vec = None
         else:
-            mat = np.stack(emb_list, axis=0)  # shape (n_headlines, hidden_size)
-            z_vec = mat.mean(axis=0)
+            # Stack embeddings -> matrix H of shape (num_headlines, hidden_dim)
+            mat = np.stack(emb_list, axis=0).astype("float32")
+
+            num_headlines, hidden_dim = mat.shape
+
+            # Initialize w once, based on embedding dimension.
+            if _NEWS_ATTENTION_W is None:
+                # Random normal; scale 1/sqrt(dim) is a common choice.
+                _NEWS_ATTENTION_W = (
+                    np.random.normal(loc=0.0, scale=1.0 / np.sqrt(hidden_dim), size=(hidden_dim,))
+                    .astype("float32")
+                )
+                print(f"[aggregate_z_news] Initialized attention vector w with dim={hidden_dim}")
+
+            # Compute scores s_k = w^T h_k - tau * Δt_k
+            # Here Δt_k = 0 for all k (single-day 24h window), so:
+            # s_k = w^T h_k
+            scores = mat @ _NEWS_ATTENTION_W
+            
+            # Softmax over scores to obtain alpha_k
+            scores = scores - np.max(scores)
+            weights = np.exp(scores)
+            if weights.sum() == 0.0:
+                weights = np.ones_like(weights) / float(len(weights))
+            else:
+                weights = weights / weights.sum()
+
+            # Compute z_news = Σ_k alpha_k * h_k
+            z_vec = (weights[:, None] * mat).sum(axis=0)
+
         z_vectors.append(z_vec)
 
     agg_df["z_news"] = z_vectors
@@ -754,34 +870,40 @@ def aggregate_z_news(agg_df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -----------------------------
-# Main pipeline
+# Main pipeline (with chunked processing)
 # -----------------------------
 
-def build_news_features(
+def built_news_features(
     ner_text_column: str,
     output_path: str,
+    news_df: _t.Optional[pd.DataFrame] = None,
     file_path: _t.Optional[str] = None,
     directory: _t.Optional[str] = None,
     file_pattern: _t.Optional[str] = None,
     max_rows: _t.Optional[int] = None,
     chunk_size: _t.Optional[int] = 20_000,
-    
 ) -> pd.DataFrame:
     """
-    Main pipeline for extracting and aggregating news features.
+    Main pipeline for extracting and aggregating news features for Leg B.
+
+    Process:
+        1. Compute headline embeddings h_k (FinBERT, frozen).
+        2. Extract entities and event flags.
+        3. Aggregate to (Stock_symbol, Date):
+        4. Compute novelty (% new entities vs previous 3 days).
+        5. Compute z_news using content-based softmax pooling
+        6. Save final dataframe for use as Leg B input to the MLP.
 
     Parameters
     ----------
-    directory
-        Directory containing CSV shards.
-    file_pattern
-        Glob pattern for CSV files.
-    max_rows
-        Maximum number of rows to process.
-    chunk_size
-        Number of rows per chunk.
     ner_text_column
-        Column to use for NER extraction.
+        Column to use for NER extraction and FinBERT embeddings (e.g. "Article_title").
+    output_path
+        Path where the pickle with final features will be saved.
+    file_path
+        Path to a single CSV file. (You are using this currently.)
+    directory, file_pattern, max_rows, chunk_size
+        Optional knobs if you want to iterate over many files.
 
     Returns
     -------
@@ -793,21 +915,27 @@ def build_news_features(
     print("Loading NER model...")
     ner_pipe = create_ner_pipeline()
 
-    print("Loading encoder model for z_news...")
+    print("Loading encoder model for z_news (FinBERT)...")
     encoder_tokenizer, encoder_model = create_encoder()
 
     all_rows = []
     total_rows = 0
 
-    # 1–5. Process dataset in chunks
+    # Process dataset in chunks
     print("Loading dataset in chunks...")
-    df_iterator = iter_dataset_chunks(file_path=file_path)
+    df_iterator = iter_dataset_chunks(
+        file_path=file_path,
+        directory=directory,
+        pattern=file_pattern,
+        max_rows=max_rows,
+        chunk_size=chunk_size,
+    )
 
-    # Processing in chunks
     for df_chunk in df_iterator:
-
         # Ensure the text column for NER exists in the dataframe
-        assert ner_text_column in df_chunk.columns, f"NER text column '{ner_text_column}' not found in DataFrame columns."
+        assert ner_text_column in df_chunk.columns, (
+            f"NER text column '{ner_text_column}' not found in DataFrame columns."
+        )
 
         print(f"Processing chunk with {len(df_chunk)} rows...")
         total_rows += len(df_chunk)
@@ -837,8 +965,8 @@ def build_news_features(
     print("Computing novelty...")
     df_stock_date = add_novelty(agg_df=df_stock_date)
 
-    # 8. Aggregate embeddings into z_news
-    print("Aggregating embeddings into z_news...")
+    # 8. Aggregate embeddings into z_news using the paper's pooling formula
+    print("Aggregating embeddings into z_news (recency-weighted pooling)...")
     df_stock_date = aggregate_z_news(agg_df=df_stock_date)
 
     # 9. Final columns for Leg B prototype
@@ -860,11 +988,8 @@ def build_news_features(
     print(f"Saving features to {output_path} ...")
     df_output.to_pickle(output_path)
 
-    # # Optional: also save a lighter CSV without z_news vector
-    # output_path_csv = BASE_PATH + "news_leg_features_no_z.csv"
-    # df_output_csv = df_output.drop(columns=["z_news"])
-    # df_output_csv.to_csv(output_path_csv, index=False)
-
     print("Done.")
     print("Columns in final output:")
     print(df_output.columns)
+
+    return df_output
