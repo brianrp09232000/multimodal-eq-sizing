@@ -926,6 +926,7 @@ def built_news_features(
     df_iterator = iter_dataset_chunks(
         file_path=file_path,
         directory=directory,
+        news_df=news_df,
         pattern=file_pattern,
         max_rows=max_rows,
         chunk_size=chunk_size,
