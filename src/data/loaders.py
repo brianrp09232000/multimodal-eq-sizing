@@ -286,7 +286,7 @@ class NewsDataset(Dataset):
         """
         row = self.data.iloc[idx]
         
-        sentences = row['sentences']
+        sentences = row['Article_title']
         # Safety checks for sentences handling parsing errors
         if not isinstance(sentences, list):
             try:

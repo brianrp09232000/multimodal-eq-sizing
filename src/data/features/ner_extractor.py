@@ -53,7 +53,7 @@ class FinanceEntityExtractor:
         
         return unique_entities
 
-def compute_novelty_feature(df: pd.DataFrame, ticker_col='ticker', date_col='Date', text_col='sentences') -> pd.DataFrame:
+def compute_novelty_feature(df: pd.DataFrame, ticker_col='ticker', date_col='Date', text_col='Article_title') -> pd.DataFrame:
     """
     Computes the novelty score for Leg 2
     Novelty (% new entities vs 3 days)

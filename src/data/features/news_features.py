@@ -701,9 +701,12 @@ def aggregate_per_stock_date(df: pd.DataFrame) -> pd.DataFrame:
 
     def combine_embeddings(series):
         return list(series)
+    def combine_titles(series):
+        return list(series)
 
     grouped = df.groupby(["Stock_symbol", "Date"], as_index=False).agg(
         velocity=("Article_title", "size"),
+        Article_title=("Article_title", combine_titles),
         entities_today=("entities", combine_entities),
         embeddings_today=("title_embedding", combine_embeddings),
         earnings_flag=("earnings_flag_row", "max"),
@@ -973,6 +976,7 @@ def built_news_features(
     output_cols = [
         "Date",
         "Stock_symbol",
+        "Article_title",
         "velocity",
         "novelty",
         "earnings_flag",
